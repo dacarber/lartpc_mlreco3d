@@ -5,6 +5,7 @@ from mlreco.utils.globals import *
 
 @post_processing(data_capture=['index', 'opflash_cryoE', 'opflash_cryoW'], 
                  result_capture=['interactions'])
+
 def run_flash_matching(data_dict, result_dict, 
                        fm=None,
                        opflash_keys=[],

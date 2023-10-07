@@ -18,6 +18,7 @@ from analysis.post_processing.pmt.FlashManager import FlashMatcherInterface
 from analysis.post_processing.crt.CRTTPCManager import CRTTPCMatcherInterface
 from analysis.classes.builders import ParticleBuilder, InteractionBuilder, FragmentBuilder
 
+
 SUPPORTED_BUILDERS = ['ParticleBuilder', 'InteractionBuilder', 'FragmentBuilder']
 
 class AnaToolsManager:
@@ -53,6 +54,7 @@ class AnaToolsManager:
         self.log_dir       = self.ana_config['analysis']['log_dir']
         self.ana_mode      = self.ana_config['analysis'].get('run_mode', 'all')
         self.convert_to_cm = self.ana_config['analysis'].get('convert_to_cm', False)
+        self.force_build   = self.ana_config['analysis'].get('force_build', False)
 
         # Initialize data product builders
         self.data_builders = None
@@ -92,10 +94,11 @@ class AnaToolsManager:
         """
         if self.max_iteration == -1:
             self.max_iteration = len(dataset)
+        print(self.max_iteration, len(dataset))
         assert self.max_iteration <= len(dataset)
         
 
-    def initialize(self, event_list=None):
+    def initialize(self, event_list=None, data_keys=None, outfile=None):
         """Initializer for setting up inference mode full chain forwarding
         or reading data from HDF5. 
         """
@@ -108,6 +111,9 @@ class AnaToolsManager:
                     assert event_list[0] < event_list[1]
                     event_list = list(range(event_list[0], event_list[1]))
 
+            if data_keys is not None:
+                self.config['iotool']['dataset']['data_keys'] = data_keys
+
             loader = loader_factory(self.config, event_list=event_list)
             self._dataset = iter(cycle(loader))
             Trainer = trainval(self.config)
@@ -118,6 +124,8 @@ class AnaToolsManager:
             self._num_images = len(loader.dataset._event_list)
         else:
             # If there is a reader, simply load reconstructed data
+            if data_keys is not None:
+                self.ana_config['reader']['file_keys'] = data_keys
             file_keys = self.ana_config['reader']['file_keys']
             n_entry = self.ana_config['reader'].get('n_entry', -1)
             n_skip = self.ana_config['reader'].get('n_skip', -1)
@@ -130,6 +138,8 @@ class AnaToolsManager:
             
 
         if 'writer' in self.ana_config:
+            if outfile is not None:
+                self.ana_config['writer']['file_name'] = outfile
             writer_cfg = copy.deepcopy(self.ana_config['writer'])
             assert 'name' in writer_cfg
             writer_cfg.pop('name')
@@ -156,7 +166,9 @@ class AnaToolsManager:
         """
         if self._reader_state == 'hdf5':
             assert iteration is not None
+            print(self)
             data, res = self._data_reader.get(iteration, nested=True)
+            #data, res = self._data_reader.get(iteration)
         elif self._reader_state == 'trainval':
             data, res = self._data_reader.forward(self._dataset)
         else:
@@ -185,7 +197,7 @@ class AnaToolsManager:
         
         data_has_voxels = set([
             'input_data', 'segment_label', 
-            'particles_label', 'cluster_label', 'kinematics_label', 
+            'particles_label', 'cluster_label', 'kinematics_label','sed', 
         ])
         result_has_voxels = set([
             'input_rescaled', 
@@ -196,6 +208,10 @@ class AnaToolsManager:
             'track_fragment_end_points',
             'particle_start_points',
             'particle_end_points',
+        ])
+        
+        data_products = set([
+            'particles', 'truth_particles', 'interactions', 'truth_interactions'
         ])
         
         meta = data['meta'][0]
@@ -209,6 +225,10 @@ class AnaToolsManager:
         for key, val in result.items():
             if key in result_has_voxels:
                 result[key] = [self.pixel_to_cm(arr, meta) for arr in val]
+            if key in data_products:
+                for plist in val:
+                    for p in plist:
+                        p.convert_to_cm(meta)
     
     
     def _build_reco_reps(self, data, result):
@@ -320,14 +340,14 @@ class AnaToolsManager:
             from DataBuilders, used for checking validity. 
         """
         if 'ParticleBuilder' in self.builders:
-            if 'particles' not in result:
+            if ('particles' not in result) or self.force_build:
                 print("Building particles instead of loading...")
                 result['particles']         = self.builders['ParticleBuilder'].build(data, result, mode='reco')
             else:
                 result['particles']         = self.builders['ParticleBuilder'].load(data, result, mode='reco')
 
         if 'InteractionBuilder' in self.builders:
-            if 'interactions' not in result:
+            if ('interactions' not in result) or self.force_build:
                 print("Building interactions instead of loading...")
                 result['interactions']      = self.builders['InteractionBuilder'].build(data, result, mode='reco')
             else:
@@ -567,12 +587,13 @@ class AnaToolsManager:
             Iteration number for current step. 
         """
         # 1. Run forward
+        print(f"\nProcessing entry {iteration}")
         glob_start = time.time()
         start = time.time()
         data, res = self.forward(iteration=iteration)
         end = time.time()
         dt = end - start
-        print(f"Foward took {dt:.3f} seconds.")
+        print(f"Forward took {dt:.3f} seconds.")
         self.logger_dict['forward_time'] = dt
         
         # 1-a. Convert units
@@ -594,9 +615,6 @@ class AnaToolsManager:
                 "translated to cm from pixels, and you are trying to convert "\
                 "coordinates again. You might want to set convert_to_cm = False."
             raise AssertionError(msg)
-        
-        if self.convert_to_cm:
-            self.convert_pixels_to_cm(data, res)
 
         # 2. Build data representations'
         if self.data_builders is not None:
@@ -609,6 +627,9 @@ class AnaToolsManager:
             dt = end - start
             self.logger_dict['build_reps_time'] = dt
         print(f"Building representations took {dt:.3f} seconds.")
+        
+        if self.convert_to_cm:
+            self.convert_pixels_to_cm(data, res)
         
         # 3. Run post-processing, if requested
         start = time.time()

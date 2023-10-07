@@ -41,8 +41,10 @@ def track_energy(particle):
     bethe_bloch_energy = {2: reco.load_range_reco(ana_cfg['rrinput'],'muon',kinetic_energy = True), 3: reco.load_range_reco(ana_cfg['rrinput'],'pion',kinetic_energy = True), 4: reco.load_range_reco(ana_cfg['rrinput'],'proton',kinetic_energy = True)}
     rr, dqs, dxs, ids = reco.track_dqdx(particle.points, particle.depositions, ana_cfg)
     length = np.sum(dxs)
+    dq = np.sum(dqs)
+    dqdx = dq/length
     recop = bethe_bloch_energy[particle.pid](length)
-    return recop
+    return recop, rr, dqdx
 def startpoint_dist(particle,interact):
     sp = particle.start_point
     inter_point = interact.vertex

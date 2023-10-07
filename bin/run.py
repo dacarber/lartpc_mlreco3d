@@ -10,7 +10,7 @@ current_directory = os.path.dirname(current_directory)
 sys.path.insert(0, current_directory)
 from mlreco.main_funcs import process_config, train, inference
 
-
+i = 0
 def main(config):
     cfg_file = config
     if not os.path.isfile(cfg_file):
