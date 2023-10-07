@@ -1,24 +1,12 @@
 import yaml
 import argparse
-import os, sys
+import os, sys, pathlib
 import numpy as np
 import copy
 
 # Setup OpT0Finder for flash matching as needed
-FMATCH_BASEDIR = '/sdf/data/neutrino/justinjm/OpT0Finder/'    # For S3DF users!
-#FMATCH_BASEDIR = '/sdf/group/neutrino/justinjm/OpT0Finder/'   # For SDF users!
 
-FMATCH_INCDIR = f'{FMATCH_BASEDIR}build/include'
-FMATCH_LIBDIR = f'{FMATCH_BASEDIR}build/lib'
-
-sys.path.append(FMATCH_INCDIR)
-sys.path.append(FMATCH_LIBDIR)
-sys.path.append(f'{FMATCH_BASEDIR}python')
-os.environ['FMATCH_BASEDIR'] = FMATCH_BASEDIR
-os.environ['LD_LIBRARY_PATH'] = f'{FMATCH_LIBDIR}:{os.environ["LD_LIBRARY_PATH"]}'
-
-import flashmatch
-if os.getenv('FMATCH_BASEDIR') is not None:
+if os.getenv('FMATCH_BUILDDIR') is not None:
     print('Setting up OpT0Finder...')
     sys.path.append(os.path.join(os.getenv('FMATCH_BASEDIR'), 'python'))
     import flashmatch
@@ -36,6 +24,7 @@ from analysis.manager import AnaToolsManager
 def main(analysis_cfg_path, model_cfg_path=None, data_keys=None, outfile=None):
 
     analysis_config = yaml.safe_load(open(analysis_cfg_path, 'r'))
+    parent_path = pathlib.Path(analysis_cfg_path).parent
     if 'chain_config' in analysis_config['analysis']:
         if model_cfg_path is None:
             model_cfg_path = analysis_config['analysis']['chain_config']
@@ -48,7 +37,8 @@ def main(analysis_cfg_path, model_cfg_path=None, data_keys=None, outfile=None):
     if 'analysis' not in analysis_config:
         raise Exception('Analysis configuration needs to live under `analysis` section.')
     
-    manager = AnaToolsManager(analysis_config, cfg=config)
+
+    manager = AnaToolsManager(analysis_config, cfg=config, parent_path=parent_path)
     manager.initialize(data_keys=data_keys, outfile=outfile)
     manager.run()
 
@@ -64,5 +54,5 @@ if __name__=="__main__":
                         help='Specify path to the output file',
                         nargs='?')
     args = parser.parse_args()
-    print(args)
+
     main(args.analysis_config, args.chain_config, args.data_keys, args.outfile)
