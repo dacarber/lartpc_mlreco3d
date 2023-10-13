@@ -34,7 +34,7 @@ def shower_energy(particle,data,entry):
     total_energy = np.sum(particle.depositions)*(23.6*10**(-6))*(85.25)*np.exp(tdrift/3000)*0.66**(-1)
     return total_energy
 def true_energy(particle):
-    total_energy = particle.asis.energy_deposit()
+    total_energy = particle.energy_deposit
     return total_energy
 def track_energy(particle):
     ana_cfg = yaml.load(open('/sdf/home/d/dcarber/DATADIR/ana_cfg.cfg', 'r').read(),Loader=yaml.Loader)
@@ -107,9 +107,12 @@ def dqdx(particle, data, entry):
     dqdx = dq/dx
     return dqdx
 def true_directions(particle):
-    true_mom_x = particle.asis.px()
-    true_mom_y = particle.asis.py()
-    true_mom_z = particle.asis.pz()
+    #true_mom_x = particle.px
+    #true_mom_y = particle.py
+    #true_mom_z = particle.pz
+    true_mom_x = particle.momentum[0]
+    true_mom_y = particle.momentum[1]
+    true_mom_z = particle.momentum[2]
     true_vector = [true_mom_x,true_mom_y,true_mom_z]
 
     if true_mom_x > 0:
