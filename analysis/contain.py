@@ -116,7 +116,7 @@ def contained(particle, data,margin = 5):
         absolute_pos[1] = pt[1] #* size_voxel_y + min_y
         absolute_pos[2] = pt[2] #* size_voxel_z + min_z
         if particle.sources[p][0] == 1 and (particle.sources[p][1] == 2 or particle.sources[p][1] == 3): #WW
-            if absolute_pos[0] >= (359.63-margin) or absolute_pos[0] <= (210.29+margin):
+            if absolute_pos[0] >= (359.63-margin) or absolute_pos[0] <= (210.29):
                 out_of_detector = True
                 #print(1,absolute_pos[0])
                 break
@@ -129,7 +129,7 @@ def contained(particle, data,margin = 5):
                 #print(3,absolute_pos[0])
                 break
         elif particle.sources[p][0] == 1 and (particle.sources[p][1] == 0 or particle.sources[p][1] == 1): #WE
-            if absolute_pos[0] >= (210.29-margin) or absolute_pos[0] <= (60.8+margin):
+            if absolute_pos[0] >= (210.29) or absolute_pos[0] <= (60.8+margin):
                 out_of_detector = True
                 #print(4,absolute_pos[0])
                 break
@@ -142,7 +142,7 @@ def contained(particle, data,margin = 5):
                 #print(6,absolute_pos[0])
                 break
         elif particle.sources[p][0] == 0 and (particle.sources[p][1] == 2 or particle.sources[p][1] == 3): #EW
-            if absolute_pos[0] <= (-210.29+margin) or absolute_pos[0] >= (-60.8-margin):
+            if absolute_pos[0] <= (-210.29) or absolute_pos[0] >= (-60.8-margin):
                 out_of_detector = True
                 #print(7,absolute_pos[0])
                 break
@@ -155,7 +155,7 @@ def contained(particle, data,margin = 5):
                 #print(9,absolute_pos[0])
                 break
         elif particle.sources[p][0] == 0 and (particle.sources[p][1] == 0 or particle.sources[p][1] == 1): #EE
-            if absolute_pos[0] <= (-359.63+margin) or absolute_pos[0] >= (-210.29-margin):
+            if absolute_pos[0] <= (-359.63+margin) or absolute_pos[0] >= (-210.29):
                 out_of_detector = True
                 #print(10,absolute_pos[0])
                 break
@@ -168,3 +168,110 @@ def contained(particle, data,margin = 5):
                 #print(12,absolute_pos[0])
                 break
     return out_of_detector
+def contained_cryo(particle, data,margin = 5):
+    '''
+    Containment function
+    Finds if a particle is contained within the TPC
+
+    Input:
+        particle: particle object
+        data: data from from lartpc_mlreco_3d
+    Return:
+        out_of_detector: Boolean that says if the particle is contained or uncontained
+    '''
+    min_x, min_y, min_z = data['meta'][0][0:3]
+    max_x, max_y, max_z = data['meta'][0][3:6]
+    size_voxel_x, size_voxel_y, size_voxel_z = data['meta'][0][6:9]
+    out_of_detector = False
+    absolute_pos = [0,0,0]
+    
+    for p,pt in enumerate(particle.points):
+        absolute_pos[0] = pt[0] #* size_voxel_x + min_x
+        absolute_pos[1] = pt[1] #* size_voxel_y + min_y
+        absolute_pos[2] = pt[2] #* size_voxel_z + min_z
+        #print(absolute_pos)
+        if absolute_pos[0] <= (-358.49+margin) or (absolute_pos[0] >= (-61.94-margin) and absolute_pos[0] <= (61.94+margin)) or  absolute_pos[0] >= (358.49-margin):
+            out_of_detector = True
+            break
+        elif absolute_pos[1] <= (-181.86+margin) or absolute_pos[1] >= (134.96-margin):
+            out_of_detector = True
+            break
+        elif absolute_pos[2] <= (-894.95+margin) or absolute_pos[2] >= (894.95-margin):
+            out_of_detector = True
+            break
+    return out_of_detector
+
+def contained_list(particle, data,margin = 5):
+    '''
+    Containment function
+    Finds if a particle is contained within the TPC
+
+    Input:
+        particle: particle object
+        data: data from from lartpc_mlreco_3d
+    Return:
+        out_of_detector: Boolean that says if the particle is contained or uncontained
+    '''
+    min_x, min_y, min_z = data['meta'][0][0:3]
+    max_x, max_y, max_z = data['meta'][0][3:6]
+    size_voxel_x, size_voxel_y, size_voxel_z = data['meta'][0][6:9]
+    out_of_detector = False
+    absolute_pos = [0,0,0]
+    points = [True]*len(particle.points)
+    for p,pt in enumerate(particle.points):
+        absolute_pos[0] = pt[0] #* size_voxel_x + min_x
+        absolute_pos[1] = pt[1] #* size_voxel_y + min_y
+        absolute_pos[2] = pt[2] #* size_voxel_z + min_z
+        if particle.sources[p][0] == 1 and (particle.sources[p][1] == 2 or particle.sources[p][1] == 3): #WW
+            if absolute_pos[0] >= (359.63-margin) or absolute_pos[0] <= (210.29+margin):
+                points[p] = False
+                #print(1,absolute_pos[0])
+                #break
+            elif absolute_pos[1] <= (-181.86+margin) or absolute_pos[1] >= (134.96-margin):
+                points[p] = False
+                #print(2,absolute_pos[0])
+                #break
+            elif absolute_pos[2] <= (-894.95+margin) or absolute_pos[2] >= (894.95-margin):
+                points[p] = False
+                #print(3,absolute_pos[0])
+                #break
+        elif particle.sources[p][0] == 1 and (particle.sources[p][1] == 0 or particle.sources[p][1] == 1): #WE
+            if absolute_pos[0] >= (210.29-margin) or absolute_pos[0] <= (60.8+margin):
+                points[p] = False
+                #print(4,absolute_pos[0])
+                #break
+            elif absolute_pos[1] <= (-181.86+margin) or absolute_pos[1] >= (134.96-margin):
+                points[p] = False
+                #print(5,absolute_pos[0])
+                #break
+            elif absolute_pos[2] <= (-894.95+margin) or absolute_pos[2] >= (894.95-margin):
+                points[p] = False
+                #print(6,absolute_pos[0])
+                #break
+        elif particle.sources[p][0] == 0 and (particle.sources[p][1] == 2 or particle.sources[p][1] == 3): #EW
+            if absolute_pos[0] <= (-210.29+margin) or absolute_pos[0] >= (-60.8-margin):
+                points[p] = False
+                #print(7,absolute_pos[0])
+                #break
+            elif absolute_pos[1] <= (-181.86+margin) or absolute_pos[1] >= (134.96-margin):
+                points[p] = False
+                #print(8,absolute_pos[0])
+                #break
+            elif absolute_pos[2] <= (-894.95+margin) or absolute_pos[2] >= (894.95-margin):
+                points[p] = False
+                #print(9,absolute_pos[0])
+                #break
+        elif particle.sources[p][0] == 0 and (particle.sources[p][1] == 0 or particle.sources[p][1] == 1): #EE
+            if absolute_pos[0] <= (-359.63-margin) or absolute_pos[0] >= (-210.29+margin):
+                points[p] = False
+                #print(10,absolute_pos[0])
+                #break
+            elif absolute_pos[1] <= (-181.86+margin) or absolute_pos[1] >= (134.96-margin):
+                points[p] = False
+                #print(11,absolute_pos[0])
+                #break
+            elif absolute_pos[2] <= (-894.95+margin) or absolute_pos[2] >= (894.95-margin):
+                points[p] = False
+                #print(12,absolute_pos[0])
+                #break
+    return points
