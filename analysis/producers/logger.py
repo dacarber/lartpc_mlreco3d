@@ -4,7 +4,7 @@ from functools import partial
 import numpy as np
 import sys
 
-from analysis.classes import TruthInteraction, TruthParticle, Interaction
+from analysis.classes import TruthInteraction, TruthParticle, Interaction, TruthParticleFragment
 
 def tag(tag_name):
     '''
@@ -55,7 +55,7 @@ class AnalysisLogger:
     #             f = partial(getattr(self, fname), **kwargs)
     #         self._data_producers.append(f)
 
-    def produce(self, particle, mode=None):
+    def produce(self, particle, mode=None, prefix=''):
 
         out = OrderedDict()
         if mode not in ['reco', 'true', None]:
@@ -71,6 +71,8 @@ class AnalysisLogger:
             out.update(update_dict)
 
         out = attach_prefix(out, mode)
+        if len(prefix) > 0:
+            out = attach_prefix(out, prefix)
 
         return out
     
@@ -190,7 +192,7 @@ class ParticleLogger(AnalysisLogger):
     @staticmethod
     def start_point_is_touching(particle, threshold=5.0):
         out = {'particle_start_point_is_touching': True}
-        if type(particle) is TruthParticle:
+        if (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
             if particle.size > 0:
                 diff = particle.points - particle.start_point.reshape(1, -1)
                 dists = np.linalg.norm(diff, axis=1)
@@ -203,7 +205,7 @@ class ParticleLogger(AnalysisLogger):
     @tag('true')
     def creation_process(particle):
         out = {'particle_creation_process': 'N/A'}
-        if type(particle) is TruthParticle:
+        if (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
             out['particle_creation_process'] = particle.creation_process
         return out
     
@@ -233,7 +235,7 @@ class ParticleLogger(AnalysisLogger):
             'truth_start_dir_y': min_int,
             'truth_start_dir_z': min_int,
         }
-        if type(particle) is TruthParticle:
+        if (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
             out['truth_start_dir_x'] = particle.truth_start_dir[0]
             out['truth_start_dir_y'] = particle.truth_start_dir[1]
             out['truth_start_dir_z'] = particle.truth_start_dir[2]
@@ -245,7 +247,7 @@ class ParticleLogger(AnalysisLogger):
         out = {
             'energy_init': -1,
         }
-        if type(particle) is TruthParticle:
+        if (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
             out['energy_init'] = particle.energy_init
         return out
     
@@ -255,7 +257,7 @@ class ParticleLogger(AnalysisLogger):
         out = {
             'energy_deposit': -1,
         }
-        if type(particle) is TruthParticle:
+        if (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
             out['energy_deposit'] = particle.energy_deposit
         return out
     
@@ -265,7 +267,7 @@ class ParticleLogger(AnalysisLogger):
         out = {
             'num_children': -1,
         }
-        if type(particle) is TruthParticle:
+        if (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
             out['num_children'] = len(particle.children_id)
         return out
     
@@ -277,7 +279,7 @@ class ParticleLogger(AnalysisLogger):
                'children_counts_2': -1,
                'children_counts_3': -1,
                'children_counts_4': -1}
-        if type(particle) is TruthParticle:
+        if (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
             out['children_counts_0'] = particle.children_counts[0]
             out['children_counts_1'] = particle.children_counts[1]
             out['children_counts_2'] = particle.children_counts[2]
@@ -337,10 +339,32 @@ class ParticleLogger(AnalysisLogger):
         return out
     
     @staticmethod
+    # @tag('reco')
+    def ke(particle):
+        out = {'ke': -1}
+        if particle is not None:
+            out['ke'] = particle.ke
+        return out
+    
+    @staticmethod
+    def mcs_ke(particle):
+        out = {'mcs_ke': -1}
+        if particle is not None:
+            out['mcs_ke'] = particle.ke
+        return out
+    
+    @staticmethod
     def is_contained(particle):
         out = {'particle_is_contained': False}
         if particle is not None:
             out['particle_is_contained'] = particle.is_contained
+        return out
+
+    @staticmethod
+    def is_valid(particle):
+        out = {'particle_is_valid': False}
+        if particle is not None:
+            out['particle_is_valid'] = particle.is_valid
         return out
 
     @staticmethod
@@ -354,8 +378,17 @@ class ParticleLogger(AnalysisLogger):
     @tag('true')
     def truth_depositions_sum(particle):
         out = {'particle_truth_depositions_sum': -1}
-        if particle is not None and type(particle) is TruthParticle:
+        if particle is not None and (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
             out['particle_truth_depositions_sum'] = particle.truth_depositions_sum
+        return out
+    
+    @staticmethod
+    @tag('true')
+    def sed_depositions_sum(particle):
+        out = {'particle_sed_depositions_sum': -1}
+        if particle is not None and (type(particle) is TruthParticle) or (type(particle) is TruthParticleFragment):
+            # print(particle.sed_depositions_MeV_sum)
+            out['particle_sed_depositions_sum'] = particle.sed_depositions_MeV_sum
         return out
     
     @staticmethod
@@ -370,6 +403,13 @@ class ParticleLogger(AnalysisLogger):
         out = {'is_principal_match': False}
         if particle is not None:
             out['is_principal_match'] = particle.is_principal_match
+        return out
+    
+    @staticmethod
+    def is_ccrosser(particle):
+        out = {'is_ccrosser': False}
+        if particle is not None:
+            out['is_ccrosser'] = particle.is_ccrosser
         return out
     
 
@@ -425,9 +465,35 @@ class InteractionLogger(AnalysisLogger):
             out = {mapping[pid] : -1 for pid in ptypes}
 
         if ia is not None:
-            if type(ia) is Interaction:
-                for pid in ptypes:
-                    out[mapping[pid]] = ia.primary_counts[pid]
+            # if type(ia) is Interaction:
+            for pid in ptypes:
+                out[mapping[pid]] = ia.primary_counts[pid]
+            # if type(ia) is TruthInteraction:
+            #     for pid in ptypes:
+            #         out[mapping[pid]] = ia.truth_primary_counts[pid]
+            
+        return out
+    
+    
+    @staticmethod
+    @tag('true')
+    def count_truth_primary_particles(ia, ptypes=None):
+        
+        mapping = {
+            0: 'num_truth_primary_photons',
+            1: 'num_truth_primary_electrons',
+            2: 'num_truth_primary_muons',
+            3: 'num_truth_primary_pions',
+            4: 'num_truth_primary_protons'
+        }
+        
+        if ptypes is not None:
+            out = {mapping[pid] : -1 for pid in ptypes}
+        else:
+            ptypes = list(mapping.keys())
+            out = {mapping[pid] : -1 for pid in ptypes}
+
+        if ia is not None:
             if type(ia) is TruthInteraction:
                 for pid in ptypes:
                     out[mapping[pid]] = ia.truth_primary_counts[pid]
@@ -483,6 +549,13 @@ class InteractionLogger(AnalysisLogger):
         if ia is not None:
             out['interaction_is_contained'] = ia.is_contained
         return out
+
+    @staticmethod
+    def is_fiducial(ia):
+        out = {'interaction_is_fiducial': False}
+        if ia is not None:
+            out['interaction_is_fiducial'] = ia.is_fiducial
+        return out
     
     @staticmethod
     def vertex(ia):
@@ -529,7 +602,7 @@ class InteractionLogger(AnalysisLogger):
             'nu_energy_init': 'N/A'
         }
         if ia is not None:
-            if ia.nu_id == 1:
+            if ia.nu_id > -1:
                 out['nu_pdg_code']         = ia.nu_pdg_code
                 out['nu_interaction_type'] = ia.nu_interaction_type
                 out['nu_interaction_mode'] = ia.nu_interaction_mode

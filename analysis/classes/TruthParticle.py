@@ -5,7 +5,8 @@ from typing import Counter, List, Union
 from . import Particle
 
 from mlreco.utils import pixel_to_cm
-from mlreco.utils.globals import PDG_TO_PID, TRACK_SHP, SHAPE_LABELS, PID_LABELS
+from mlreco.utils.globals import PDG_TO_PID, TRACK_SHP, SHAPE_LABELS, \
+        PID_LABELS, PID_MASSES
 from mlreco.utils.decorators import inherit_docstring
 
 @inherit_docstring(Particle)
@@ -37,8 +38,6 @@ class TruthParticle(Particle):
         (N_s, 3) Set of voxel coordinates that make up this particle in the SED tensor
     sed_depositions_MeV : np.ndarray, default np.array([])
         (N_s) Array of energy deposition values for each SED voxel in MeV
-    direction : np.ndarray
-        (3) Unit vector corresponding to the true particle direction (normalized momentum)
     '''
 
     # Attributes that specify coordinates
@@ -56,7 +55,10 @@ class TruthParticle(Particle):
                  sed_index: np.ndarray = np.empty(0, dtype=np.int64),
                  sed_points: np.ndarray = np.empty((0, 3), dtype=np.float32),
                  sed_depositions_MeV: np.ndarray = np.empty(0, dtype=np.float32),
+                 truth_momentum: np.ndarray = np.full(3, -np.inf, dtype=np.float32),
+                 truth_start_dir: np.ndarray = np.full(3, -np.inf, dtype=np.float32),
                  particle_asis: object = larcv.Particle(),
+                 children_counts: np.ndarray = np.zeros(len(SHAPE_LABELS), dtype=np.int64),
                  **kwargs):
 
         # Set the attributes of the parent Particle class
@@ -78,18 +80,14 @@ class TruthParticle(Particle):
         self._sed_points            = sed_points
         self._sed_depositions_MeV   = np.atleast_1d(sed_depositions_MeV)
 
-        self._children_counts = np.zeros(len(SHAPE_LABELS), dtype=np.int64)
-
         # Load truth information from the true particle object
+        self.truth_momentum = np.copy(truth_momentum)
+        self.truth_start_dir = np.copy(truth_start_dir)
         if particle_asis is not None:
             self.register_larcv_particle(particle_asis)
 
         # Quantity to be set with the children counting post-processor
-        self.children_counts = np.zeros(len(SHAPE_LABELS), dtype=np.int64)
-
-        # Quantities to be set with the direction estimator
-        self.truth_start_dir = np.zeros(3)
-        self.truth_end_dir   = np.zeros(3)
+        self.children_counts = np.copy(children_counts)
 
         # Quantities to be set with track range reconstruction post-processor
         self.length_tng  = -1.
@@ -111,11 +109,15 @@ class TruthParticle(Particle):
         shared_keys  = ['track_id', 'creation_process', 'pdg_code', 't']
         scalar_keys  = [pre + k for pre in ['', 'parent_', 'ancestor_'] for k in shared_keys]
         scalar_keys += ['distance_travel', 'energy_deposit', 'energy_init',\
-                'parent_id', 'group_id', 'interaction_id',\
-                'mcst_index', 'mct_index', 'num_voxels', 'p', 'shape']
+                'parent_id', 'group_id', 'mcst_index', 'mct_index',\
+                'num_voxels', 'p', 'shape']
         for k in scalar_keys:
             val = getattr(particle, k)()
             setattr(self, k, val)
+
+        # TODO: Move this to main list once this is in every LArCV file
+        if hasattr(particle, 'gen_id'):
+            setattr(self, 'gen_id', particle.gen_id())
             
         # Exception for particle_id
         self.truth_id = particle.id()
@@ -132,16 +134,22 @@ class TruthParticle(Particle):
             setattr(self, k, vector)
 
         # Load up the 3-momentum (stored in a peculiar way) and the direction
-        self.momentum  = np.array([getattr(particle, f'p{a}')() for a in ['x', 'y', 'z']])
-        self.direction = np.zeros(3)
-        if np.linalg.norm(self.momentum) > 0.:
-            self.direction = self.momentum/np.linalg.norm(self.momentum)
+        self.truth_momentum = np.array([getattr(particle, f'p{a}')() for a in ['x', 'y', 'z']])
+        self.truth_start_dir = np.full(3, -np.inf, dtype=np.float32)
+        if np.linalg.norm(self.truth_momentum):
+            self.truth_start_dir = \
+                    self.truth_momentum/np.linalg.norm(self.truth_momentum)
 
         # Set parent attributes based on the above
         self.semantic_type = self.shape
         self.pid           = PDG_TO_PID[int(self.pdg_code)]
         self.start_point   = self.first_step.astype(np.float32)
         self.end_point     = self.last_step.astype(np.float32)
+
+        # Set the initial kinematic energy from the initial total energy
+        self.ke_init = -1.
+        if self.pid in PID_MASSES:
+            self.ke_init = self.energy_init - PID_MASSES[self.pid]
 
         # Patch to deal with bad LArCV input, TODO: fix it upstream
         if self.start_point[0] == -np.inf and self.end_point[0] == -np.inf:
@@ -165,7 +173,7 @@ class TruthParticle(Particle):
         scalar_keys += ['distance_travel', 'energy_deposit', 'energy_init',\
                 'parent_id', 'group_id', 'interaction_id',\
                 'mcst_index', 'mct_index', 'num_voxels', 'p', 'shape',\
-                'pid', 'semantic_type']
+                'pid', 'semantic_type', 'truth_id']
 
         # Load up all the 3-vector information
         vec_keys = ['position', 'end_position', 'parent_position',\
@@ -178,6 +186,12 @@ class TruthParticle(Particle):
             if type(attr) is bytes:
                 attr = attr.decode()
             setattr(self, attr_name, attr)
+
+        # TODO: Move this to main list once this is in every LArCV file
+        if 'gen_id' in particle_dict:
+            setattr(self, 'gen_id', particle_dict['gen_id'])
+        if 'ke_init' in particle_dict:
+            setattr(self, 'ke_init', particle_dict['ke_init'])
 
     def merge(self, particle):
         '''

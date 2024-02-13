@@ -8,8 +8,8 @@ from mlreco.iotools.writers import CSVWriter
 from mlreco.utils import pixel_to_cm
 from mlreco.utils.globals import COORD_COLS
 
-from analysis.classes.builders import ParticleBuilder, \
-        InteractionBuilder, FragmentBuilder
+from analysis.classes.builders import ParticleBuilder, InteractionBuilder
+from analysis.classes.FragmentBuilder import FragmentBuilder
 from analysis.post_processing.manager import PostProcessorManager
 from analysis.producers import scripts
 from analysis.producers.common import ScriptProcessor
@@ -102,7 +102,8 @@ class AnaToolsManager:
                         load_only_principal_matches = True,
                         profile = True,
                         chain_config = None,
-                        data_builders = None):
+                        data_builders = None,
+                        event_list = None):
         '''
         Initialize the main analysis tool parameters
 
@@ -134,6 +135,7 @@ class AnaToolsManager:
         self.convert_to_cm = convert_to_cm
         self.load_principal_matches = load_only_principal_matches
         self.profile = profile
+        self.event_list = event_list
 
         # Create the log directory if it does not exist and initialize log file
         if not os.path.isdir(log_dir):
@@ -143,9 +145,11 @@ class AnaToolsManager:
         self.logger_dict = {}
 
         # Load the full chain configuration, if it is provided
-        self.chain_config = None
+        self.chain_config = chain_config
         if chain_config is not None:
-            self.chain_config = process_config(chain_cfg)
+            cfg = yaml.safe_load(open(chain_config, 'r').read())
+            process_config(cfg, verbose=False)
+            self.chain_config = cfg
 
 
         # Initialize data product builders
@@ -182,8 +186,8 @@ class AnaToolsManager:
             self._set_iteration(self._data_reader)
         else:
             # If no reader is provided, run the the ML chain on the fly
+            loader = loader_factory(self.chain_config, event_list=self.event_list)
 
-            loader = loader_factory(self.config, event_list=event_list)
             self._dataset = iter(cycle(loader))
             Trainer = trainval(self.chain_config)
             Trainer.initialize()
@@ -212,6 +216,7 @@ class AnaToolsManager:
         iteration : int
             Iteration number for current step.
         '''
+        
         # 1. Run forward
         print(f'\nProcessing entry {iteration}')
         glob_start = time.time()
@@ -278,21 +283,27 @@ class AnaToolsManager:
         # 5. Run scripts, if requested
         start = time.time()
         ana_output = self.run_ana_scripts(data, res, iteration)
-
+        end = time.time()
+        dt = end - start
+        self.logger_dict['ana_scripts'] = dt
+        print(f'Scripts took {dt:.3f} seconds.')
         if len(ana_output) == 0:
             print('No output from analysis scripts.')
+
+        start = time.time()
         self.write(ana_output)
         end = time.time()
         dt = end - start
-        print(f'Scripts took {dt:.3f} seconds.')
+        print(f'Writing to csv took {dt:.3f} seconds.')
         self.logger_dict['write_csv'] = dt
 
         glob_end = time.time()
         dt = glob_end - glob_start
         print(f'Took total of {dt:.3f} seconds for one iteration of inference.')
+        
         return data, res
 
-    def forward(self, iteration=None):
+    def forward(self, iteration=None, run=None, event=None):
         '''
         Read one minibatch worth of image from dataset.
 
@@ -301,6 +312,10 @@ class AnaToolsManager:
         iteration : int, optional
             Iteration number, needed for reading entries from
             HDF5 files, by default None.
+        run : int, optional
+            Run number
+        event : int, optional
+            Event number
 
         Returns
         -------
@@ -310,18 +325,20 @@ class AnaToolsManager:
             Result dictionary containing full chain outputs
         '''
         if self.reader_state == 'file':
-            assert iteration is not None
-            print(self)
+            assert (iteration is not None) \
+                    ^ (run is not None and event is not None)
+            if iteration is None:
+                iteration = self._data_reader.get_run_event_index(run, event)
+
             data, res = self._data_reader.get(iteration, nested=True)
 
             file_index = self._data_reader.file_index[iteration]
             data['file_index'] = [file_index]
             data['file_name'] = [self._data_reader.file_paths[file_index]]
-
-        elif self._reader_state == 'trainval':
+        elif self.reader_state == 'trainval':
             data, res = self._data_reader.forward(self._dataset)
         else:
-            raise ValueError(f'Data reader {self._reader_state} '\
+            raise ValueError(f'Data reader {self.reader_state} '\
                     'is not supported!')
 
         return data, res
@@ -400,8 +417,8 @@ class AnaToolsManager:
             result['interactions']      = self.builders['InteractionBuilder'].build(data, result, mode='reco')
             length_check.append(len(result['interactions']))
         if 'FragmentBuilder' in self.builders:
-            result['ParticleFragments']      = self.builders['FragmentBuilder'].build(data, result, mode='reco')
-            length_check.append(len(result['ParticleFragments']))
+            result['particle_fragments'] = self.builders['FragmentBuilder'].build(data, result, mode='reco')
+            length_check.append(len(result['particle_fragments']))
         return length_check
 
     def _build_truth_reps(self, data, result):
@@ -429,8 +446,8 @@ class AnaToolsManager:
             result['truth_interactions'] = self.builders['InteractionBuilder'].build(data, result, mode='truth')
             length_check.append(len(result['truth_interactions']))
         if 'FragmentBuilder' in self.builders:
-            result['TruthParticleFragments'] = self.builders['FragmentBuilder'].build(data, result, mode='truth')
-            length_check.append(len(result['TruthParticleFragments']))
+            result['truth_particle_fragments'] = self.builders['FragmentBuilder'].build(data, result, mode='truth')
+            length_check.append(len(result['truth_particle_fragments']))
         return length_check
 
     def build_representations(self, data, result, mode='all'):
@@ -608,8 +625,6 @@ class AnaToolsManager:
             self.csv_writers = {}
 
         for script_name, fname_to_update_list in ana_output.items():
-            print("Script Name = ", script_name)
-
             append  = self.scripts[script_name]['logger'].get('append', False)
             filenames = list(fname_to_update_list.keys())
             if len(filenames) != len(set(filenames)):

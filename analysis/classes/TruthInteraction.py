@@ -10,6 +10,7 @@ from . import Interaction, TruthParticle
 from .Interaction import _process_interaction_attributes
 
 from mlreco.utils import pixel_to_cm
+from mlreco.utils.globals import PID_LABELS
 from mlreco.utils.decorators import inherit_docstring
 
 @inherit_docstring(Interaction)
@@ -99,10 +100,10 @@ class TruthInteraction(Interaction):
 
         # Initialize private attributes to be set by setter only
         self._particles  = None
-        self._particle_counts = np.zeros(6, dtype=np.int64)
-        self._primary_counts  = np.zeros(6, dtype=np.int64)
-        self._truth_particle_counts = np.zeros(6, dtype=np.int64)
-        self._truth_primary_counts  = np.zeros(6, dtype=np.int64)
+        self._particle_counts = np.zeros(len(PID_LABELS)+1, dtype=np.int64)
+        self._primary_counts  = np.zeros(len(PID_LABELS)+1, dtype=np.int64)
+        self._truth_particle_counts = np.zeros(len(PID_LABELS)+1, dtype=np.int64)
+        self._truth_primary_counts  = np.zeros(len(PID_LABELS)+1, dtype=np.int64)
 
         if self._particles is None:
             self._depositions_MeV        = depositions_MeV
@@ -127,7 +128,7 @@ class TruthInteraction(Interaction):
         self.nu_energy_init      = nu_energy_init
 
         # TODO: Must fill this attribute with truth information
-        self.truth_vertex = truth_vertex
+        self.truth_vertex = np.copy(truth_vertex)
         self.register_larcv_neutrino()
 
     @property
@@ -178,7 +179,7 @@ class TruthInteraction(Interaction):
                 sed_points_list.append(p.sed_points)
                 sed_depositions_MeV_list.append(p.sed_depositions_MeV)
 
-                if p.pid >= 0:
+                if p.pid > -1:
                     self._truth_particle_counts[p.pid] += 1
                     self._truth_primary_counts[p.pid] += int(p.is_primary)
                     if len(p.index) > 0:
@@ -262,7 +263,7 @@ class TruthInteraction(Interaction):
             
             for name in self._SCALAR_KEYS:
                 val = getattr(neutrino, name)()
-                if name != id:
+                if name != 'id':
                     setattr(self, f'nu_{name}', val)
                 else:
                     setattr(self, f'nu_truth_id', val)
@@ -292,7 +293,6 @@ class TruthInteraction(Interaction):
                 if type(attr) is bytes:
                     attr = attr.decode()
                 setattr(self, name, attr)
-        
 
     @property
     def depositions_MeV(self):
@@ -325,7 +325,7 @@ class TruthInteraction(Interaction):
     @cached_property
     def truth_topology(self):
         msg = ""
-        encode = {0: 'g', 1: 'e', 2: 'mu', 3: 'pi', 4: 'p', 5: '?'}
+        encode = {0: 'g', 1: 'e', 2: 'mu', 3: 'pi', 4: 'p', 5: 'k', 6:'?'}
         for i, count in enumerate(self._truth_primary_counts):
             if count > 0:
                 msg += f"{count}{encode[i]}"

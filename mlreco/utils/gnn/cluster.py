@@ -84,6 +84,7 @@ def _reform_clusters(data: nb.float64[:,:],
     clusts = []
     for i in range(len(batch_ids)):
         clusts.append(np.where((data[:, BATCH_COL] == batch_ids[i]) & (data[:, column] == clust_ids[i]))[0])
+
     return clusts
 
 
@@ -99,10 +100,10 @@ def get_cluster_batch(data, clusts):
     Returns:
         np.ndarray: (C) List of batch IDs
     """
-    if len(clusts) > 0:
-        return _get_cluster_batch(data, clusts)
-    else:
-        return np.empty((0,), dtype=np.int32)
+    if not len(clusts):
+        return np.empty(0, dtype=data.dtype)
+
+    return _get_cluster_batch(data, clusts)
 
 @nb.njit(cache=True)
 def _get_cluster_batch(data: nb.float64[:,:],
@@ -128,6 +129,9 @@ def get_cluster_label(data, clusts, column=CLUST_COL):
     Returns:
         np.ndarray: (C) List of cluster labels
     """
+    if not len(clusts):
+        return np.empty(0, dtype=data.dtype)
+
     return _get_cluster_label(data, clusts, column)
 
 @nb.njit(cache=True)
@@ -139,6 +143,7 @@ def _get_cluster_label(data: nb.float64[:,:],
     for i, c in enumerate(clusts):
         v, cts = nbl.unique(data[c, column])
         labels[i] = v[np.argmax(cts)]
+
     return labels
 
 
@@ -160,6 +165,9 @@ def get_cluster_primary_label(data, clusts, column, cluster_column=CLUST_COL, gr
     Returns:
         np.ndarray: (C) List of cluster primary labels
     """
+    if not len(clusts):
+        return np.empty(0, dtype=data.dtype)
+
     return _get_cluster_primary_label(data, clusts, column, cluster_column, group_column)
 
 @nb.njit(cache=True)
@@ -193,6 +201,9 @@ def get_momenta_label(data, clusts):
     Returns:
         np.ndarray: (C) List of cluster IDs
     """
+    if not len(clusts):
+        return np.empty(0, dtype=data.dtype)
+
     return _get_momenta_label(data, clusts)
 
 @nb.njit(cache=True)
@@ -201,6 +212,7 @@ def _get_momenta_label(data: nb.float64[:,:],
     labels = np.empty(len(clusts), dtype=data.dtype)
     for i, c in enumerate(clusts):
         labels[i] = np.mean(data[c, MOM_COL])
+
     return labels
 
 
@@ -216,6 +228,9 @@ def get_cluster_centers(data, clusts):
     Returns:
         np.ndarray: (C,3) tensor of cluster centers
     """
+    if not len(clusts):
+        return np.empty(0, dtype=data.dtype)
+
     return _get_cluster_centers(data, clusts)
 
 @nb.njit(cache=True)
@@ -224,6 +239,7 @@ def _get_cluster_centers(data: nb.float64[:,:],
     centers = np.empty((len(clusts), 3), dtype=data.dtype)
     for i, c in enumerate(clusts):
         centers[i] = np.sum(data[c][:, COORD_COLS], axis=0)/len(c)
+
     return centers
 
 
@@ -239,6 +255,9 @@ def get_cluster_sizes(data, clusts):
     Returns:
         np.ndarray: (C) List of cluster sizes
     """
+    if not len(clusts):
+        return np.empty(0, dtype=data.dtype)
+
     return _get_cluster_sizes(data, clusts)
 
 @nb.njit(cache=True)
@@ -247,6 +266,7 @@ def _get_cluster_sizes(data: nb.float64[:,:],
     sizes = np.empty(len(clusts), dtype=np.int64)
     for i, c in enumerate(clusts):
         sizes[i] = len(c)
+
     return sizes
 
 
@@ -262,6 +282,9 @@ def get_cluster_energies(data, clusts):
     Returns:
         np.ndarray: (C) List of cluster energies
     """
+    if not len(clusts):
+        return np.empty(0, dtype=data.dtype)
+
     return _get_cluster_energies(data, clusts)
 
 @nb.njit(cache=True)
@@ -270,6 +293,7 @@ def _get_cluster_energies(data: nb.float64[:,:],
     energies = np.empty(len(clusts), dtype=data.dtype)
     for i, c in enumerate(clusts):
         energies[i] = np.sum(data[c, VALUE_COL])
+
     return energies
 
 
@@ -288,6 +312,7 @@ def get_cluster_features(data: nb.float64[:,:],
     """
     if not len(clusts):
         return np.empty((0, 16), dtype=data.dtype) # Cannot type empty list
+
     return _get_cluster_features(data, clusts)
 
 @nb.njit(parallel=True, cache=True)
@@ -301,12 +326,14 @@ def _get_cluster_features(data: nb.float64[:,:],
         clust = clusts[ids[k]]
         x = data[clust][:, COORD_COLS]
 
-        # Center data
+        # Get cluster center
         center = nbl.mean(x, 0)
-        x = x - center
 
         # Get orientation matrix
-        A = np.dot(x.T, x)
+        A = np.cov(x.T, ddof = len(x) - 1).astype(x.dtype)
+
+        # Center data
+        x = x - center
 
         # Get eigenvectors, normalize orientation matrix and eigenvalues to largest
         # If points are superimposed, i.e. if the largest eigenvalue != 0, no need to keep going
@@ -360,6 +387,7 @@ def get_cluster_features_extended(data, clusts, add_value=True, add_shape=True):
     assert add_value or add_shape
     if not len(clusts):
         return np.empty((0, add_value*2+add_shape), dtype=data.dtype)
+
     return _get_cluster_features_extended(data, clusts, add_value, add_shape)
 
 @nb.njit(parallel=True, cache=True)
@@ -404,6 +432,9 @@ def get_cluster_points_label(data, particles, clusts, random_order=True):
     Returns:
         np.ndarray: (N,6) cluster-wise start and end points (in RANDOMIZED ORDER by default)
     """
+    if not len(clusts):
+        return np.empty((0, 6), dtype=data.dtype)
+
     return _get_cluster_points_label(data, particles, clusts, random_order)
 
 @nb.njit(cache=True)
@@ -447,6 +478,9 @@ def get_cluster_start_points(data, clusts):
     Returns:
         np.ndarray: (C,3) tensor of cluster start points
     """
+    if not len(clusts):
+        return np.empty((0, 3), dtype=data.dtype)
+
     return _get_cluster_start_points(data, clusts)
 
 @nb.njit(parallel=True, cache=True)
@@ -473,6 +507,9 @@ def get_cluster_directions(data, starts, clusts, max_dist=-1, optimize=False):
     Returns:
         torch.tensor: (3) Orientation
     """
+    if not len(clusts):
+        return np.empty(starts.shape, dtype=data.dtype)
+
     return _get_cluster_directions(data, starts, clusts, max_dist, optimize)
 
 @nb.njit(parallel=True, cache=True)
@@ -505,6 +542,9 @@ def get_cluster_dedxs(data, values, starts, clusts, max_dist=-1):
     Returns:
         torch.tensor: (N) dEdx values for each cluster
     """
+    if not len(clusts):
+        return np.empty(0, dtype=data.dtype)
+
     return _get_cluster_dedxs(data, values, starts, clusts, max_dist)
 
 @nb.njit(parallel=True, cache=True)
@@ -580,15 +620,14 @@ def cluster_direction(voxels: nb.float64[:,:],
     Returns:
         torch.tensor: (3) Orientation
     """
-    # If max_dist is set, limit the set of voxels to those within a sphere of radius max_dist
-    if not optimize and max_dist > 0:
+    # If max_dist is set, limit the set of voxels to those within a sphere
+    # of radius max_dist
+    if max_dist > 0:
         dist_mat = nbl.cdist(start.reshape(1,-1), voxels).flatten()
-        voxels = voxels[dist_mat <= max_dist]
-        if len(voxels) < 2:
-            return np.zeros(3, dtype=voxels.dtype)
+        voxels = voxels[dist_mat <= max(max_dist, np.min(dist_mat))]
 
     # If optimize is set, select the radius by minimizing the transverse spread
-    elif optimize:
+    if optimize and len(voxels) > 2:
         # Order the cluster points by increasing distance to the start point
         dist_mat = nbl.cdist(start.reshape(1,-1), voxels).flatten()
         order = np.argsort(dist_mat)
@@ -596,33 +635,44 @@ def cluster_direction(voxels: nb.float64[:,:],
         dist_mat = dist_mat[order]
 
         # Find the PCA relative secondary spread for each point
-        labels = np.zeros(len(voxels), dtype=voxels.dtype)
+        labels = -np.ones(len(voxels), dtype=voxels.dtype)
         meank = nbl.mean(voxels[:3], 0)
-        covk = (np.transpose(voxels[:3]-meank) @ (voxels[:3]-meank))/3
+        covk = (np.transpose(voxels[:3] - meank) @ (voxels[:3] - meank))/3
         for i in range(2, len(voxels)):
-            # Get the eigenvalues and eigenvectors, identify point of minimum secondary spread
+            # Get the eigenvalues, compute relative transverse spread
             w, _ = np.linalg.eigh(covk)
-            labels[i] = np.sqrt(w[2]/(w[0]+w[1])) if (w[0]+w[1]) else 0.
+            labels[i] = np.sqrt(w[2] / (w[0] + w[1])) \
+                    if (w[0] + w[1]) / w[2] > 1e-9 else 0.
+
+            # If the value is the same as the previous, choose this one
             if dist_mat[i] == dist_mat[i-1]:
-                labels[i-1] = 0.
+                labels[i-1] = -1.
 
             # Increment mean and matrix
-            if i != len(voxels)-1:
-                meank = ((i+1)*meank+voxels[i+1])/(i+2)
-                covk = (i+1)*covk/(i+2) + (voxels[i+1]-meank).reshape(-1,1)*(voxels[i+1]-meank)/(i+1)
+            if i != len(voxels) - 1:
+                meank = ((i + 1) * meank + voxels[i+1]) / (i + 2)
+                covk = (i + 1) * covk / (i + 2) \
+                        + (voxels[i+1] - meank).reshape(-1,1) \
+                        * (voxels[i+1] - meank) / (i + 1)
 
         # Subselect voxels that are most track-like
         max_id = np.argmax(labels)
         voxels = voxels[:max_id+1]
 
+    # If no voxels were selected, return dummy value
+    if not len(voxels) or (len(voxels) == 1 and np.all(voxels[0] == start)):
+        return np.array([1., 0., 0.], dtype=voxels.dtype)
+
     # Compute mean direction with respect to start point, normalize it
     rel_voxels = np.empty((len(voxels), 3), dtype=voxels.dtype)
     for i in range(len(voxels)):
-        rel_voxels[i] = voxels[i]-start
+        rel_voxels[i] = voxels[i] - start
+
     mean = nbl.mean(rel_voxels, 0)
-    norm = np.sqrt(np.dot(mean, mean))
+    norm = np.sqrt(np.sum(mean**2))
     if norm:
         return mean/norm
+
     return mean
 
 

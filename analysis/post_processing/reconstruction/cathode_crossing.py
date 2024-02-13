@@ -62,11 +62,10 @@ class CathodeCrosserProcessor(PostProcessor):
             Path to a detector boundary file. Supersedes `detector` if set
         source_file : str, optional
             Path to a detector source file. Supersedes `detector` if set
-        truth_point_mode : str, default 'points'
-            Point attribute to use to find cathode crossers of true particles
-        run_mode : str, default 'both'
-            Which output to run on (one of 'both', 'reco' or 'truth')
         '''
+        # Initialize the parent class
+        super().__init__(run_mode, truth_point_mode)
+
         # Initialize the geometry
         self.geo = Geometry(detector, boundary_file, source_file)
 
@@ -76,14 +75,6 @@ class CathodeCrosserProcessor(PostProcessor):
         self.angle_tolerance = angle_tolerance
         self.adjust_crossers = adjust_crossers
         self.merge_crossers = merge_crossers
-
-        # List object types in which to look for cathode crossers
-        self.key_list = []
-        if run_mode in ['reco', 'both']:
-            self.key_list += ['particles']
-        if run_mode in ['truth', 'both']:
-            self.key_list += ['truth_particles']
-        self.truth_point_mode = truth_point_mode
 
     def process(self, data_dict, result_dict):
         '''
@@ -98,7 +89,7 @@ class CathodeCrosserProcessor(PostProcessor):
         '''
         # Loop over particle types
         update_dict = {}
-        for k in self.key_list:
+        for k in self.part_keys:
             # Find crossing particles already merged by the reconstruction
             truth = 'truth' in k
             prefix = 'truth_' if truth else ''
@@ -129,7 +120,6 @@ class CathodeCrosserProcessor(PostProcessor):
                 # module but not all of them or cross multiple cathodes
                 if p.is_ccrosser and self.adjust_crossers and len(tpcs) == 2:
                     # Adjust positions
-                    print(p.is_ccrosser)
                     self.adjust_positions(result_dict, i, truth=truth)
 
             # If we do not want to merge broken crossers, our job here is done
@@ -157,7 +147,7 @@ class CathodeCrosserProcessor(PostProcessor):
                 caxes = np.array([i for i in range(3) if i != daxis])
 
                 # Store the distance of the particle to the cathode
-                tpc_offset = self.geo.get_tpc_offset(end_points_i, \
+                tpc_offset = self.geo.get_min_tpc_offset(end_points_i, \
                         modules_i[0], tpcs_i[0])[daxis]
                 cdists = end_points_i[:,daxis] - tpc_offset - cpos
 
@@ -391,7 +381,8 @@ class CathodeCrosserProcessor(PostProcessor):
             end_points = points[[idx0, idx1]]
 
             # Find the point closest to the cathode
-            tpc_offset = self.geo.get_tpc_offset(end_points, module, t)[daxis]
+            tpc_offset = self.geo.get_min_tpc_offset(end_points,
+                    module, t)[daxis]
             cdists = end_points[:, daxis] - tpc_offset - cpos
             argmin = np.argmin(np.abs(cdists))
             closest_points[i] = end_points[argmin]
@@ -404,7 +395,6 @@ class CathodeCrosserProcessor(PostProcessor):
         # xing_point[daxis] = cpos
         # for i, t in enumerate(tpcs):
         #     end_dir = -cluster_direction(points, closest_points[i])
-        #     print(end_dir)
         #     factor = (cpos - closest_points[i, daxis])/end_dir[daxis]
         #     intersection = closest_points[i] + factor * end_dir
         #     vplane = dvector - end_dir/end_dir[daxis] if end_dir[daxis] else -end_dir
